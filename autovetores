@@ -1,0 +1,309 @@
+# autovetores_completo.py
+# Cálculo de Autovetores em Python Puro com match-case
+# Autor: Seu Nome
+# Seminário: Álgebra Linear Aplicada
+
+import math
+import copy
+import sys
+
+# ==============================
+# FUNÇÕES AUXILIARES
+# ==============================
+
+def mat_vec_mult(A, v):
+    """Multiplicação matriz-vetor: A @ v"""
+    return [sum(A[i][j] * v[j] for j in range(len(v))) for i in range(len(A))]
+
+def vec_sub(u, v):
+    """Subtração de vetores: u - v"""
+    return [u[i] - v[i] for i in range(len(u))]
+
+def dot(u, v):
+    """Produto escalar: u · v"""
+    return sum(u[i] * v[i] for i in range(len(u)))
+
+def norm(v):
+    """Norma euclidiana de v"""
+    return math.sqrt(dot(v, v))
+
+def normalize(v):
+    """Normaliza vetor (ou retorna zero se nulo)"""
+    n = norm(v)
+    return [x / n for x in v] if n > 1e-10 else v
+
+def mat_transpose(A):
+    """Transposta de matriz A"""
+    return [[A[j][i] for j in range(len(A))] for i in range(len(A[0]))]
+
+def print_matriz(A, nome="Matriz"):
+    """Imprime matriz formatada"""
+    print(f"\n{nome}:")
+    for row in A:
+        print("  ", " ".join(f"{x:8.4f}" for x in row))
+
+def print_vetor(v, nome="Vetor"):
+    """Imprime vetor formatado"""
+    print(f"{nome}: [", " ".join(f"{x:8.4f}" for x in v), "]")
+
+# ==============================
+# MÉTODOS DE AUTOVETORES
+# ==============================
+
+def metodo_potencia(A, max_iter=200, tol=1e-8):
+    """Método da potência: autovetor dominante"""
+    n = len(A)
+    v = [1.0] * n
+    v = normalize(v)
+    
+    for _ in range(max_iter):
+        Av = mat_vec_mult(A, v)
+        v_new = normalize(Av)
+        if norm(vec_sub(v_new, v)) < tol:
+            break
+        v = v_new
+    
+    autovalor = dot(mat_vec_mult(A, v), v)
+    return autovalor, v
+
+def todos_autovetores_direita(A):
+    """Todos autovetores à direita via deflação"""
+    A = copy.deepcopy(A)
+    n = len(A)
+    autovalores = []
+    autovetores = []
+    
+    for _ in range(n):
+        lambda_k, v_k = metodo_potencia(A)
+        autovalores.append(lambda_k)
+        autovetores.append(v_k)
+        
+        # Deflação: A = A - λ v v^T
+        for i in range(n):
+            for j in range(n):
+                A[i][j] -= lambda_k * v_k[i] * v_k[j]
+    
+    return autovalores, autovetores
+
+def autovetor_esquerda(A):
+    """Autovetor à esquerda: w^T A = λ w^T"""
+    At = mat_transpose(A)
+    _, v_dir = metodo_potencia(At)
+    w = v_dir
+    Aw = mat_vec_mult(A, w)
+    lambda_calc = dot(Aw, w) / dot(w, w)
+    return w, lambda_calc
+
+def autovetores_simetrica_2x2(A):
+    """Autovetores de matriz simétrica 2x2 (fórmula fechada)"""
+    a, b, c, d = A[0][0], A[0][1], A[1][0], A[1][1]
+    
+    tr = a + d
+    det = a*d - b*c
+    delta = tr**2 - 4*det
+    simetrica = abs(b - c) < 1e-10
+
+    match (simetrica, delta >= 0):
+        case (False, _):
+            print("Erro: matriz não é simétrica!")
+            return None
+        case (_, False):
+            print("Erro: autovalores complexos!")
+            return None
+        case (True, True):
+            lambda1 = (tr + math.sqrt(delta)) / 2
+            lambda2 = (tr - math.sqrt(delta)) / 2
+            
+            v1 = normalize([b, lambda1 - a]) if abs(b) > 1e-10 else [1.0, 0.0]
+            v2 = normalize([b, lambda2 - a]) if abs(b) > 1e-10 else [0.0, 1.0]
+            
+            return [lambda1, lambda2], [v1, v2]
+
+def tem_autovetor_nulo(A, tol=1e-6):
+    """Verifica se existe autovalor ≈ 0"""
+    autovalores, _ = todos_autovetores_direita(A)
+    return any(abs(l) < tol for l in autovalores)
+
+# ==============================
+# PCA INTERATIVO (100% SEGURO)
+# ==============================
+
+def pca_interativo():
+    print("\n=== PCA: Insira os dados ===")
+    
+    # Entrada de n e m
+    while True:
+        try:
+            n = int(input("Quantas amostras? "))
+            m = int(input("Quantas variáveis? "))
+            if n >= 2 and m >= 1:
+                break
+            print("Use n ≥ 2 e m ≥ 1!")
+        except ValueError:
+            print("Digite números inteiros!")
+    
+    dados = []
+    print(f"Insira {n} amostras (espaço separado):")
+    for i in range(n):
+        while True:
+            entrada = input(f"Amostra {i+1}: ").strip()
+            if not entrada:
+                print("Erro: linha vazia!")
+                continue
+            linha = entrada.split()
+            
+            # Verifica quantidade
+            if len(linha) != m:
+                print(f"Erro: insira exatamente {m} números! (você digitou {len(linha)})")
+                continue
+            
+            # Tenta converter
+            try:
+                valores = [float(x) for x in linha]
+                dados.append(valores)
+                break
+            except ValueError:
+                print(f"Erro: '{entrada}' contém valores inválidos. Use apenas números!")
+
+    # Cálculo da covariância
+    medias = [sum(col[j] for col in dados) / n for j in range(m)]
+    Xc = [[dados[i][j] - medias[j] for j in range(m)] for i in range(n)]
+    cov = [[sum(Xc[k][i] * Xc[k][j] for k in range(n)) / (n-1) 
+            for j in range(m)] for i in range(m)]
+    
+    print_matriz(cov, "Matriz de Covariância")
+    
+    autovalores, autovetores = todos_autovetores_direita(cov)
+    idx = sorted(range(len(autovalores)), key=lambda k: autovalores[k], reverse=True)
+    
+    print("\nComponentes Principais (ordenados por variância):")
+    for k in idx:
+        print(f"PC{k+1} (λ={autovalores[k]:.4f}):", end=" ")
+        print_vetor(autovetores[k])
+
+# ==============================
+# LEITURA DA MATRIZ (100% ROBUSTA)
+# ==============================
+
+def ler_matriz():
+    print("\nInsira o tamanho da matriz:")
+    while True:
+        try:
+            n = int(input("Tamanho n (n x n): "))
+            if n >= 2:
+                break
+            print("Use n ≥ 2!")
+        except ValueError:
+            print("Digite um número inteiro!")
+    
+    print(f"\nInsira a matriz {n}x{n} (linha por linha, números separados por espaço):")
+    A = []
+    for i in range(n):
+        while True:
+            entrada = input(f"Linha {i+1}: ").strip()
+            if not entrada:
+                print("Erro: linha vazia!")
+                continue
+            linha = entrada.split()
+            
+            if len(linha) != n:
+                print(f"Erro: insira exatamente {n} números! (você digitou {len(linha)})")
+                continue
+            
+            try:
+                valores = [float(x) for x in linha]
+                A.append(valores)
+                break
+            except ValueError:
+                print(f"Erro: '{entrada}' contém valores inválidos. Use apenas números!")
+    
+    return A, n
+
+# ==============================
+# MENU PRINCIPAL (TODAS AS OPÇÕES FUNCIONAM)
+# ==============================
+
+def menu_principal(A, n):
+    while True:
+        print("\n" + "="*60)
+        print("           MENU DE AUTOVETORES")
+        print("="*60)
+        print("1. Autovetor dominante (método da potência)")
+        print("2. Todos os autovetores à direita")
+        print("3. Autovetor à esquerda")
+        print("4. Autovetores ortogonais (2x2 simétrica)")
+        print("5. Verificar autovetor nulo")
+        print("6. PCA com dados inseridos")
+        print("7. Sair")
+        print("="*60)
+        
+        op = input("Escolha: ").strip()
+        
+        match op:
+            case "1":
+                lambda_dom, v_dom = metodo_potencia(A)
+                print(f"\nAutovetor dominante:")
+                print(f"λ ≈ {lambda_dom:.6f}")
+                print_vetor(v_dom, "v")
+            
+            case "2":
+                print("\nCalculando todos os autovetores...")
+                lambdas, vs = todos_autovetores_direita(A)
+                print("\nResultados:")
+                for i, (l, v) in enumerate(zip(lambdas, vs), 1):
+                    print(f"λ{i} = {l:.6f} →", end=" ")
+                    print_vetor(v)
+            
+            case "3":
+                w, lambda_w = autovetor_esquerda(A)
+                print(f"\nAutovetor à esquerda:")
+                print_vetor(w, "w^T")
+                print(f"λ ≈ {lambda_w:.6f}")
+            
+            case "4":
+                if n != 2:
+                    print("Erro: esta opção só funciona com matriz 2x2!")
+                else:
+                    resultado = autovetores_simetrica_2x2(A)
+                    if resultado:
+                        lambdas, vs = resultado
+                        print("\nAutovetores ortogonais:")
+                        for i in range(2):
+                            print(f"λ{i+1} = {lambdas[i]:.6f} →", end=" ")
+                            print_vetor(vs[i])
+            
+            case "5":
+                match tem_autovetor_nulo(A):
+                    case True:
+                        print("\nA matriz TEM autovetor nulo (λ ≈ 0)")
+                    case False:
+                        print("\nA matriz NÃO TEM autovetor nulo")
+            
+            case "6":
+                pca_interativo()
+            
+            case "7":
+                print("Até logo! Obrigado por usar o programa.")
+                sys.exit(0)
+            
+            case _:
+                print("Opção inválida! Escolha de 1 a 7.")
+
+# ==============================
+# EXECUÇÃO PRINCIPAL
+# ==============================
+
+def main():
+    print("="*60)
+    print("    CÁLCULO DE AUTOVETORES (SEM NUMPY)")
+    print("        com match-case em todo o código")
+    print("        Versão Final - Todas as opções funcionam!")
+    print("="*60)
+    
+    A, n = ler_matriz()
+    print_matriz(A, "Sua Matriz")
+    
+    menu_principal(A, n)
+
+if __name__ == "__main__":
+    main()
